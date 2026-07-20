@@ -1,0 +1,69 @@
+#include <stdio.h>
+#define FLAG 'F'
+#define ESC  'E'
+int stuff_data(const char *src, char *dest) {
+    int i = 0, j = 0;
+    while (src[i] != '\0') {
+        if (src[i] == FLAG || src[i] == ESC) {
+            dest[j++] = ESC;
+        }
+        dest[j++] = src[i];
+        i++;
+    }
+    dest[j] = '\0';
+    return j;
+}
+int frame_payload(const char *stuffed, char *dest) {
+    int i = 0, j = 0;
+    dest[j++] = FLAG;
+    while (stuffed[i] != '\0') {
+        dest[j++] = stuffed[i++];
+    }
+    dest[j++] = FLAG;
+    dest[j] = '\0';
+    return j;
+}
+int destuff_frame(const char *frame, int frame_len, char *dest) {
+    int i, j = 0;
+    for (i = 1; i < frame_len - 1; i++) {
+        if (frame[i] == ESC) {
+            i++;
+        }
+        dest[j++] = frame[i];
+    }
+    dest[j] = '\0';
+    return j;
+}
+int main() {
+    char original_str[100];
+    char stuffed_str[200];
+    char framed_str[205];
+    char destuffed_str[100];
+    int i, frame_len = 0;
+    scanf("%99s", original_str);
+    stuff_data(original_str, stuffed_str);
+    frame_len = frame_payload(stuffed_str, framed_str);
+    destuff_frame(framed_str, frame_len, destuffed_str);
+
+    for (i = 0; original_str[i] != '\0'; i++) {
+       printf("%c ", original_str[i]);
+    }
+    printf("\n");
+
+    for (i = 0; stuffed_str[i] != '\0'; i++) {
+        printf("%c ", stuffed_str[i]);
+    }
+    printf("\n");
+
+    for (i = 0; framed_str[i] != '\0'; i++) {
+        printf("%c ", framed_str[i]);
+    }
+    printf("\n");
+
+    for (i = 0; destuffed_str[i] != '\0'; i++) {
+        printf("%c ", destuffed_str[i]);
+    }
+    printf("\n");
+
+    return 0;
+}
