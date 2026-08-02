@@ -1,0 +1,174 @@
+#include <stdio.h>
+#include <string.h>
+
+#define MAX 100
+
+int main()
+{
+    char message[MAX];
+    char stuffed[MAX * 2];
+    char frame[MAX * 2];
+    char received[MAX * 2];
+    char recovered[MAX];
+    char FLAG = 'F';
+    char ESC = 'E';
+
+    int i, j, choice;
+
+    printf("===== BYTE STUFFING =====\n");
+
+    printf("Enter the Message: ");
+    fgets(message, sizeof(message), stdin);
+    message[strcspn(message, "\n")] = '\0';
+
+    /* Byte Stuffing */
+    j = 0;
+    for(i = 0; message[i] != '\0'; i++)
+    {
+        if(message[i] == FLAG || message[i] == ESC)
+        {
+            stuffed[j++] = ESC;
+        }
+        stuffed[j++] = message[i];
+    }
+    stuffed[j] = '\0';
+
+    /* Framing */
+    frame[0] = FLAG;
+    strcpy(frame + 1, stuffed);
+    frame[strlen(stuffed) + 1] = FLAG;
+    frame[strlen(stuffed) + 2] = '\0';
+
+    printf("\nOriginal Message : %s", message);
+    printf("\nStuffed Frame    : %s", stuffed);
+    printf("\nTransmitted Frame: %s\n", frame);
+
+    strcpy(received, frame);
+
+    printf("\n1. Receive Without Error");
+    printf("\n2. Simulate Error");
+    printf("\nEnter your choice: ");
+    scanf("%d", &choice);
+
+    if(choice == 2)
+    {
+        int pos;
+        char ch;
+
+        printf("Enter the position to modify (1-%lu): ", strlen(received));
+        scanf("%d", &pos);
+
+        printf("Enter the new character: ");
+        scanf(" %c", &ch);
+
+        if(pos >= 1 && pos <= strlen(received))
+        {
+            received[pos - 1] = ch;
+        }
+    }
+
+    printf("\nReceived Frame   : %s\n", received);
+
+    /* Check Frame */
+    if(received[0] != FLAG || received[strlen(received)-1] != FLAG)
+    {
+        printf("\nFrame Error Detected.\n");
+        printf("Status : Data Corrupted\n");
+        return 0;
+    }
+
+    /* De-stuffing */
+    j = 0;
+    for(i = 1; i < strlen(received)-1; i++)
+    {
+        if(received[i] == ESC)
+        {
+            i++;
+            if(i >= strlen(received)-1)
+            {
+                printf("\nInvalid Escape Character.\n");
+                return 0;
+            }
+        }
+
+        recovered[j++] = received[i];
+    }
+
+    recovered[j] = '\0';
+
+    printf("Recovered Data   : %s\n", recovered);
+
+    if(strcmp(message, recovered) == 0)
+        printf("Status           : Data Received Correctly\n");
+    else
+        printf("Status           : Data Corrupted\n");
+
+    return 0;
+}
+Sample Output 1
+===== BYTE STUFFING =====
+Enter the Message: HELLO
+
+Original Message : HELLO
+Stuffed Frame    : HELLO
+Transmitted Frame: FHELLOF
+
+1. Receive Without Error
+2. Simulate Error
+Enter your choice: 1
+
+Received Frame   : FHELLOF
+Recovered Data   : HELLO
+Status           : Data Received Correctly
+Sample Output 2
+===== BYTE STUFFING =====
+Enter the Message: SAFE
+
+Original Message : SAFE
+Stuffed Frame    : SAEFEE
+Transmitted Frame: FSAEFEEF
+
+1. Receive Without Error
+2. Simulate Error
+Enter your choice: 1
+
+Received Frame   : FSAEFEEF
+Recovered Data   : SAFE
+Status           : Data Received Correctly
+Sample Output 3
+===== BYTE STUFFING =====
+Enter the Message: HELLO
+
+Original Message : HELLO
+Stuffed Frame    : HELLO
+Transmitted Frame: FHELLOF
+
+1. Receive Without Error
+2. Simulate Error
+Enter your choice: 2
+
+Enter the position to modify (1-7): 1
+Enter the new character: X
+
+Received Frame   : XHELLOF
+
+Frame Error Detected.
+Status : Data Corrupted
+Sample Output 4
+===== BYTE STUFFING =====
+Enter the Message: HELLO
+
+Original Message : HELLO
+Stuffed Frame    : HELLO
+Transmitted Frame: FHELLOF
+
+1. Receive Without Error
+2. Simulate Error
+Enter your choice: 2
+
+Enter the position to modify (1-7): 4
+Enter the new character: X
+
+Received Frame   : FHEXLOF
+Recovered Data   : HEXLO
+Status           : Data Corrupted
