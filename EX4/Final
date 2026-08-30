@@ -1,0 +1,977 @@
+#include <stdio.h>
+
+#define MAX 10
+#define INF 999
+
+
+/* =========================================================
+   DISPLAY ORIGINAL COST MATRIX
+   ========================================================= */
+void showMatrix(int n, int graph[MAX][MAX])
+{
+    int i, j;
+
+    printf("\n========================================\n");
+    printf("            COST MATRIX\n");
+    printf("========================================\n");
+
+    printf("\n\t");
+
+    for (i = 0; i < n; i++)
+        printf("%c\t", 'A' + i);
+
+    printf("\n");
+
+    for (i = 0; i < n; i++)
+    {
+        printf("%c\t", 'A' + i);
+
+        for (j = 0; j < n; j++)
+        {
+            if (graph[i][j] == INF)
+                printf("INF\t");
+            else
+                printf("%d\t", graph[i][j]);
+        }
+
+        printf("\n");
+    }
+}
+
+
+/* =========================================================
+   DISTANCE VECTOR ROUTING
+   ========================================================= */
+void distanceVector(int n, int cost[MAX][MAX])
+{
+    int dist[MAX][MAX];
+    int next[MAX][MAX];
+
+    int i, j, k;
+    int change;
+    int round = 0;
+
+    /* Initialize distance and next hop */
+    for (i = 0; i < n; i++)
+    {
+        for (j = 0; j < n; j++)
+        {
+            dist[i][j] = cost[i][j];
+
+            if (cost[i][j] != INF && i != j)
+                next[i][j] = j;
+            else
+                next[i][j] = -1;
+        }
+    }
+
+
+    /* Distance Vector calculation */
+    do
+    {
+        change = 0;
+        round++;
+
+        for (i = 0; i < n; i++)
+        {
+            for (j = 0; j < n; j++)
+            {
+                for (k = 0; k < n; k++)
+                {
+                    if (dist[i][k] != INF &&
+                        dist[k][j] != INF)
+                    {
+                        if (dist[i][k] + dist[k][j] < dist[i][j])
+                        {
+                            dist[i][j] =
+                                dist[i][k] + dist[k][j];
+
+                            next[i][j] = next[i][k];
+
+                            change = 1;
+                        }
+                    }
+                }
+            }
+        }
+
+    } while (change);
+
+
+    /* Display Distance Vector Routing Tables */
+    printf("\n========================================\n");
+    printf("        DISTANCE VECTOR ROUTING\n");
+    printf("========================================\n");
+
+    printf("\nIterations = %d\n", round);
+
+    for (i = 0; i < n; i++)
+    {
+        printf("\nRouting Table - Router %c\n", 'A' + i);
+
+        printf("----------------------------------------\n");
+
+        printf("Destination\tNext Hop\tCost\n");
+
+        printf("----------------------------------------\n");
+
+        for (j = 0; j < n; j++)
+        {
+            printf("%c\t\t", 'A' + j);
+
+            if (i == j)
+            {
+                printf("-\t\t0\n");
+            }
+            else if (dist[i][j] == INF)
+            {
+                printf("-\t\tINF\n");
+            }
+            else
+            {
+                printf("%c\t\t%d\n",
+                       'A' + next[i][j],
+                       dist[i][j]);
+            }
+        }
+    }
+}
+
+
+/* =========================================================
+   FIND MINIMUM DISTANCE
+   ========================================================= */
+int findMin(int dist[MAX], int visited[MAX], int n)
+{
+    int min = INF;
+    int pos = -1;
+    int i;
+
+    for (i = 0; i < n; i++)
+    {
+        if (!visited[i] && dist[i] < min)
+        {
+            min = dist[i];
+            pos = i;
+        }
+    }
+
+    return pos;
+}
+
+
+/* =========================================================
+   DISPLAY PATH
+   ========================================================= */
+void showPath(int parent[MAX], int node)
+{
+    if (parent[node] == -1)
+    {
+        printf("%c", 'A' + node);
+        return;
+    }
+
+    showPath(parent, parent[node]);
+
+    printf(" -> %c", 'A' + node);
+}
+
+
+/* =========================================================
+   LINK STATE ROUTING
+   Dijkstra Algorithm
+   ========================================================= */
+void linkState(int n, int graph[MAX][MAX])
+{
+    int dist[MAX];
+    int visited[MAX];
+    int parent[MAX];
+
+    int source;
+    int i, count, current;
+
+    char srcChar;
+
+    printf("\nEnter source router (A-%c): ",
+           'A' + n - 1);
+
+    scanf(" %c", &srcChar);
+
+    source = srcChar - 'A';
+
+
+    if (source < 0 || source >= n)
+    {
+        printf("\nInvalid source router!\n");
+        return;
+    }
+
+
+    /* Initialize */
+    for (i = 0; i < n; i++)
+    {
+        dist[i] = INF;
+        visited[i] = 0;
+        parent[i] = -1;
+    }
+
+    dist[source] = 0;
+
+
+    /* Dijkstra */
+    for (count = 0; count < n - 1; count++)
+    {
+        current = findMin(dist, visited, n);
+
+        if (current == -1)
+            break;
+
+        visited[current] = 1;
+
+
+        for (i = 0; i < n; i++)
+        {
+            if (!visited[i] &&
+                graph[current][i] != INF)
+            {
+                int newCost =
+                    dist[current] +
+                    graph[current][i];
+
+                if (newCost < dist[i])
+                {
+                    dist[i] = newCost;
+                    parent[i] = current;
+                }
+            }
+        }
+    }
+
+
+    /* Display Link State Result */
+    printf("\n========================================\n");
+    printf("          LINK STATE ROUTING\n");
+    printf("========================================\n");
+
+    printf("\nSource Router: %c\n",
+           'A' + source);
+
+    printf("\nDestination\tCost\tShortest Path\n");
+
+    printf("----------------------------------------\n");
+
+
+    for (i = 0; i < n; i++)
+    {
+        printf("%c\t\t", 'A' + i);
+
+        if (dist[i] == INF)
+        {
+            printf("INF\tNo Path\n");
+        }
+        else
+        {
+            printf("%d\t", dist[i]);
+
+            showPath(parent, i);
+
+            printf("\n");
+        }
+    }
+}
+
+
+/* =========================================================
+   CHANGE COST OF SPECIFIC ROUTER PAIR
+   ========================================================= */
+void updateSpecificCost(int n, int graph[MAX][MAX])
+{
+    char r1Char, r2Char;
+
+    int r1, r2, newCost;
+
+    printf("\nEnter source router (A-%c): ",
+           'A' + n - 1);
+
+    scanf(" %c", &r1Char);
+
+    printf("Enter destination router (A-%c): ",
+           'A' + n - 1);
+
+    scanf(" %c", &r2Char);
+
+
+    r1 = r1Char - 'A' + 1;
+    r2 = r2Char - 'A' + 1;
+
+
+    if (r1 < 1 || r1 > n ||
+        r2 < 1 || r2 > n)
+    {
+        printf("\nInvalid router letters!\n");
+        return;
+    }
+
+
+    if (r1 == r2)
+    {
+        printf("\nCost from a router to itself is always 0.\n");
+        return;
+    }
+
+
+    printf("Enter new cost (Enter %d for INF/no connection): ",
+           INF);
+
+    scanf("%d", &newCost);
+
+
+    if (newCost < 0 || newCost > INF)
+    {
+        printf("\nInvalid cost!\n");
+        return;
+    }
+
+
+    /* Assuming bidirectional links */
+    graph[r1 - 1][r2 - 1] = newCost;
+    graph[r2 - 1][r1 - 1] = newCost;
+
+
+    printf("\nCost matrix updated successfully between %c and %c!\n",
+           r1Char, r2Char);
+}
+
+
+/* =========================================================
+   FIND SHORTEST PATH FOR SPECIFIC PAIR
+   ========================================================= */
+void findSpecificShortestPath(int n,
+                              int graph[MAX][MAX])
+{
+    char srcChar, destChar;
+
+    int source, dest;
+
+    int dist[MAX];
+    int visited[MAX];
+    int parent[MAX];
+
+    int i, count, current;
+
+
+    printf("\nEnter source router (A-%c): ",
+           'A' + n - 1);
+
+    scanf(" %c", &srcChar);
+
+
+    printf("Enter destination router (A-%c): ",
+           'A' + n - 1);
+
+    scanf(" %c", &destChar);
+
+
+    source = srcChar - 'A';
+    dest = destChar - 'A';
+
+
+    if (source < 0 || source >= n ||
+        dest < 0 || dest >= n)
+    {
+        printf("\nInvalid router letters!\n");
+        return;
+    }
+
+
+    /* Initialize */
+    for (i = 0; i < n; i++)
+    {
+        dist[i] = INF;
+        visited[i] = 0;
+        parent[i] = -1;
+    }
+
+    dist[source] = 0;
+
+
+    /* Dijkstra */
+    for (count = 0; count < n - 1; count++)
+    {
+        current = findMin(dist, visited, n);
+
+        if (current == -1)
+            break;
+
+        visited[current] = 1;
+
+
+        for (i = 0; i < n; i++)
+        {
+            if (!visited[i] &&
+                graph[current][i] != INF)
+            {
+                int newCost =
+                    dist[current] +
+                    graph[current][i];
+
+                if (newCost < dist[i])
+                {
+                    dist[i] = newCost;
+                    parent[i] = current;
+                }
+            }
+        }
+    }
+
+
+    /* Display Result */
+    printf("\n========================================\n");
+
+    printf("     SHORTEST PATH: %c -> %c\n",
+           'A' + source,
+           'A' + dest);
+
+    printf("========================================\n");
+
+
+    if (dist[dest] == INF)
+    {
+        printf("No path exists between %c and %c.\n",
+               'A' + source,
+               'A' + dest);
+    }
+    else
+    {
+        printf("Shortest Cost: %d\n",
+               dist[dest]);
+
+        printf("Path: ");
+
+        showPath(parent, dest);
+
+        printf("\n");
+    }
+}
+
+
+/* =========================================================
+   FINAL COST MATRIX
+   Floyd-Warshall Algorithm
+   ========================================================= */
+void finalCostMatrix(int n,
+                     int graph[MAX][MAX])
+{
+    int dist[MAX][MAX];
+
+    int i, j, k;
+
+
+    /* Copy original matrix */
+    for (i = 0; i < n; i++)
+    {
+        for (j = 0; j < n; j++)
+        {
+            dist[i][j] = graph[i][j];
+        }
+    }
+
+
+    /* Floyd-Warshall Algorithm */
+
+    for (k = 0; k < n; k++)
+    {
+        for (i = 0; i < n; i++)
+        {
+            for (j = 0; j < n; j++)
+            {
+                if (dist[i][k] != INF &&
+                    dist[k][j] != INF)
+                {
+                    if (dist[i][k] + dist[k][j] < dist[i][j])
+                    {
+                        dist[i][j] =
+                            dist[i][k] + dist[k][j];
+                    }
+                }
+            }
+        }
+    }
+
+
+    /* Display Final Cost Matrix */
+
+    printf("\n========================================\n");
+    printf("          FINAL COST MATRIX\n");
+    printf("========================================\n");
+
+    printf("\n\t");
+
+    for (i = 0; i < n; i++)
+    {
+        printf("%c\t", 'A' + i);
+    }
+
+    printf("\n");
+
+
+    for (i = 0; i < n; i++)
+    {
+        printf("%c\t", 'A' + i);
+
+        for (j = 0; j < n; j++)
+        {
+            if (dist[i][j] == INF)
+                printf("INF\t");
+            else
+                printf("%d\t", dist[i][j]);
+        }
+
+        printf("\n");
+    }
+}
+
+
+/* =========================================================
+   FINAL ROUTING TABLE
+   ========================================================= */
+void finalRoutingTable(int n,
+                       int graph[MAX][MAX])
+{
+    int dist[MAX];
+    int visited[MAX];
+    int parent[MAX];
+
+    int source, dest;
+    int i, count, current;
+
+
+    printf("\n========================================\n");
+    printf("           FINAL ROUTING TABLE\n");
+    printf("========================================\n");
+
+
+    /* Find routing table for every router */
+
+    for (source = 0; source < n; source++)
+    {
+        /* Initialize */
+
+        for (i = 0; i < n; i++)
+        {
+            dist[i] = INF;
+            visited[i] = 0;
+            parent[i] = -1;
+        }
+
+        dist[source] = 0;
+
+
+        /* Dijkstra */
+
+        for (count = 0; count < n - 1; count++)
+        {
+            current = findMin(dist, visited, n);
+
+            if (current == -1)
+                break;
+
+            visited[current] = 1;
+
+
+            for (i = 0; i < n; i++)
+            {
+                if (!visited[i] &&
+                    graph[current][i] != INF)
+                {
+                    int newCost =
+                        dist[current] +
+                        graph[current][i];
+
+                    if (newCost < dist[i])
+                    {
+                        dist[i] = newCost;
+                        parent[i] = current;
+                    }
+                }
+            }
+        }
+
+
+        /* Display Routing Table */
+
+        printf("\n========================================\n");
+
+        printf("       ROUTING TABLE - ROUTER %c\n",
+               'A' + source);
+
+        printf("========================================\n");
+
+        printf("Destination\tNext Hop\tCost\tPath\n");
+
+        printf("----------------------------------------\n");
+
+
+        for (dest = 0; dest < n; dest++)
+        {
+            printf("%c\t\t",
+                   'A' + dest);
+
+
+            /* Source itself */
+
+            if (source == dest)
+            {
+                printf("-\t\t0\t%c\n",
+                       'A' + source);
+            }
+
+
+            /* No path */
+
+            else if (dist[dest] == INF)
+            {
+                printf("-\t\tINF\tNo Path\n");
+            }
+
+
+            /* Path exists */
+
+            else
+            {
+                int hop = dest;
+
+
+                /*
+                   Find first router after source.
+
+                   Example:
+
+                   A -> B -> C -> D
+
+                   For destination D,
+                   Next Hop = B
+                */
+
+                while (parent[hop] != source &&
+                       parent[hop] != -1)
+                {
+                    hop = parent[hop];
+                }
+
+
+                if (parent[hop] == -1)
+                {
+                    printf("-\t\t%d\t",
+                           dist[dest]);
+                }
+                else
+                {
+                    printf("%c\t\t%d\t",
+                           'A' + hop,
+                           dist[dest]);
+                }
+
+
+                /* Complete path */
+
+                showPath(parent, dest);
+
+                printf("\n");
+            }
+        }
+    }
+
+
+    printf("\n========================================\n");
+    printf("       END OF FINAL ROUTING TABLE\n");
+    printf("========================================\n");
+}
+
+
+/* =========================================================
+   MAIN FUNCTION
+   ========================================================= */
+int main()
+{
+    int n = 0;
+
+    int graph[MAX][MAX];
+
+    int i, j;
+
+    int choice;
+
+    int initialized = 0;
+
+
+    do
+    {
+        printf("\n");
+        printf("========================================\n");
+        printf("      ROUTING ALGORITHM SIMULATOR\n");
+        printf("========================================\n");
+
+        printf("1. Enter/Change Full Network Cost Matrix\n");
+        printf("2. Display Cost Matrix\n");
+        printf("3. Distance Vector Routing\n");
+        printf("4. Link State Routing\n");
+        printf("5. Both Algorithms\n");
+        printf("6. Change Cost of Specific Router Pair\n");
+        printf("7. Find Shortest Distance/Path for Specific Pair\n");
+        printf("8. Final Cost Matrix\n");
+        printf("9. Final Routing Table\n");
+        printf("10. Exit\n");
+
+
+        printf("\nEnter your choice: ");
+
+        scanf("%d", &choice);
+
+
+        switch (choice)
+        {
+
+            /* =========================================
+               OPTION 1
+               ENTER FULL COST MATRIX
+               ========================================= */
+
+            case 1:
+
+                printf("\nEnter number of routers (maximum %d): ",
+                       MAX);
+
+                scanf("%d", &n);
+
+
+                if (n <= 0 || n > MAX)
+                {
+                    printf("\nInvalid number of routers!\n");
+
+                    n = 0;
+
+                    break;
+                }
+
+
+                printf("\nEnter the cost matrix.\n");
+
+                printf("Enter %d for no connection.\n\n",
+                       INF);
+
+
+                for (i = 0; i < n; i++)
+                {
+                    for (j = 0; j < n; j++)
+                    {
+                        printf("Cost %c -> %c: ",
+                               'A' + i,
+                               'A' + j);
+
+                        scanf("%d",
+                              &graph[i][j]);
+
+
+                        /* Diagonal is always 0 */
+
+                        if (i == j)
+                        {
+                            graph[i][j] = 0;
+                        }
+                    }
+                }
+
+
+                initialized = 1;
+
+                printf("\nCost matrix entered successfully!\n");
+
+                break;
+
+
+            /* =========================================
+               OPTION 2
+               DISPLAY ORIGINAL MATRIX
+               ========================================= */
+
+            case 2:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    showMatrix(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 3
+               DISTANCE VECTOR
+               ========================================= */
+
+            case 3:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    distanceVector(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 4
+               LINK STATE
+               ========================================= */
+
+            case 4:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    linkState(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 5
+               BOTH ALGORITHMS
+               ========================================= */
+
+            case 5:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    printf("\nRunning Distance Vector...\n");
+
+                    distanceVector(n, graph);
+
+
+                    printf("\nRunning Link State...\n");
+
+                    linkState(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 6
+               CHANGE SPECIFIC LINK COST
+               ========================================= */
+
+            case 6:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    updateSpecificCost(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 7
+               SPECIFIC SHORTEST PATH
+               ========================================= */
+
+            case 7:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    findSpecificShortestPath(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 8
+               FINAL COST MATRIX
+               ========================================= */
+
+            case 8:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    finalCostMatrix(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 9
+               FINAL ROUTING TABLE
+               ========================================= */
+
+            case 9:
+
+                if (!initialized)
+                {
+                    printf("\nPlease enter the cost matrix first (Option 1)!\n");
+                }
+                else
+                {
+                    finalRoutingTable(n, graph);
+                }
+
+                break;
+
+
+            /* =========================================
+               OPTION 10
+               EXIT
+               ========================================= */
+
+            case 10:
+
+                printf("\nProgram terminated.\n");
+
+                break;
+
+
+            /* =========================================
+               INVALID OPTION
+               ========================================= */
+
+            default:
+
+                printf("\nInvalid choice! Please try again.\n");
+        }
+
+    } while (choice != 10);
+
+
+    return 0;
+}
