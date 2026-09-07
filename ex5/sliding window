@@ -1,0 +1,265 @@
+[24bcs054@mepcolinux ex5]$cat ex3.c
+#include <stdio.h>
+
+#define MAX 50
+
+/* Function for Go-Back-N */
+void goBackN(int n, int w, int lost)
+{
+    int base = 0;
+    int i;
+
+    printf("\n*** GO-BACK-N SIMULATION ***\n");
+
+    while (base < n)
+    {
+        printf("\n[WINDOW] Current active frames: ");
+        for (i = base; i < base + w && i < n; i++)
+            printf("%d ", i);
+        printf("\n");
+
+        /* Send frames */
+        for (i = base; i < base + w && i < n; i++)
+        {
+            printf("  Sender: Frame %d sent\n", i);
+
+            if (i == lost)
+            {
+                printf("  Receiver ALERT: Frame %d dropped or corrupted\n", i);
+                printf("  Receiver ALERT: No ACK generated\n");
+                break;
+            }
+
+            printf("  Receiver: Frame %d accepted ok\n", i);
+            printf("  Sender ACK: ACK %d sent to sender\n", i + 1);
+        }
+
+        /* Error occurred */
+        if (i < base + w && i < n && i == lost)
+        {
+            printf("\n  TIMEOUT: Acknowledgment timer expired\n");
+            printf("  ACTION: Rolling back to Frame %d\n", lost);
+            printf("  RETRANSMITTING: ");
+            for (i = lost; i < base + w && i < n; i++)
+                printf("%d ", i);
+            printf("\n");
+
+            /* Assume retransmitted frames are received */
+            for (i = lost; i < base + w && i < n; i++)
+            {
+                printf("  Receiver: Frame %d accepted ok (Retransmission)\n", i);
+                printf("  Sender ACK: ACK %d sent to sender\n", i + 1);
+            }
+
+            lost = -1;
+        }
+
+        base += w;
+    }
+
+    printf("\nSUCCESS: All transmissions completed safely.\n");
+}
+
+
+/* Function for Selective Repeat */
+void selectiveRepeat(int n, int w, int lost)
+{
+    int base = 0;
+    int i;
+
+    printf("\n*** SELECTIVE REPEAT SIMULATION ***\n");
+
+    while (base < n)
+    {
+        printf("\n[WINDOW] Current active frames: ");
+        for (i = base; i < base + w && i < n; i++)
+            printf("%d ", i);
+        printf("\n");
+
+        /* Send frames */
+        for (i = base; i < base + w && i < n; i++)
+        {
+            printf("  Sender: Frame %d sent\n", i);
+
+            if (i == lost)
+            {
+                printf("  Receiver ALERT: Frame %d dropped or corrupted\n", i);
+                printf("  Receiver ALERT: NAK %d sent to sender\n", i + 1);
+            }
+            else
+            {
+                printf("  Receiver: Frame %d accepted ok\n", i);
+                printf("  Sender ACK: ACK %d sent to sender\n", i + 1);
+            }
+        }
+
+        /* Retransmit only lost frame */
+        if (lost >= base && lost < base + w)
+        {
+            printf("\n  TIMEOUT: Timer expired specifically for Frame %d\n", lost);
+            printf("  ACTION: Targeted retransmission of Frame %d only\n", lost);
+            printf("  Receiver: Frame %d accepted ok (Repaired)\n", lost);
+            printf("  Sender ACK: ACK %d sent to sender\n", lost + 1);
+
+            lost = -1;
+        }
+
+        base += w;
+    }
+
+    printf("\nSUCCESS: All transmissions completed safely.\n");
+}
+
+
+/* Main Function */
+int main()
+{
+    int choice;
+    int n, w, lost;
+
+    while (1)
+    {
+        printf("\nSLIDING WINDOW SIMULATOR TOOLKIT\n");
+        printf("1. Go-Back-N Protocol\n");
+        printf("2. Selective Repeat Protocol\n");
+        printf("3. Exit Program\n");
+
+        printf("\nEnter choice (1, 2, or 3): ");
+        scanf("%d", &choice);
+
+        if (choice == 3)
+        {
+            printf("\nExiting program. Goodbye.\n");
+            break;
+        }
+
+        if (choice != 1 && choice != 2)
+        {
+            printf("\nERROR: Choice selection not recognized. Please try again.\n");
+            continue;
+        }
+
+        printf("Enter total frames to transfer: ");
+        scanf("%d", &n);
+
+        printf("Enter sender window size (W): ");
+        scanf("%d", &w);
+
+        printf("Enter lost frame number (-1 for no loss): ");
+        scanf("%d", &lost);
+
+        if (n <= 0 || n > MAX || w <= 0 || w > n)
+        {
+            printf("\nERROR: Invalid frame or window specifications. Resetting...\n");
+            continue;
+        }
+
+        if (lost >= n)
+        {
+            printf("\nERROR: Frame index error injection is out of bounds. Resetting...\n");
+            continue;
+        }
+
+        switch (choice)
+        {
+            case 1:
+                goBackN(n, w, lost);
+                break;
+
+            case 2:
+                selectiveRepeat(n, w, lost);
+                break;
+        }
+    }
+
+    return 0;
+}
+
+[24bcs054@mepcolinux ex5]$g++ ex3.c
+[24bcs054@mepcolinux ex5]$./a.out
+
+SLIDING WINDOW SIMULATOR TOOLKIT
+1. Go-Back-N Protocol
+2. Selective Repeat Protocol
+3. Exit Program
+
+Enter choice (1, 2, or 3): 1
+Enter total frames to transfer: 5
+Enter sender window size (W): 3
+Enter lost frame number (-1 for no loss): 2
+
+*** GO-BACK-N SIMULATION ***
+
+[WINDOW] Current active frames: 0 1 2
+  Sender: Frame 0 sent
+  Receiver: Frame 0 accepted ok
+  Sender ACK: ACK 1 sent to sender
+  Sender: Frame 1 sent
+  Receiver: Frame 1 accepted ok
+  Sender ACK: ACK 2 sent to sender
+  Sender: Frame 2 sent
+  Receiver ALERT: Frame 2 dropped or corrupted
+  Receiver ALERT: No ACK generated
+
+  TIMEOUT: Acknowledgment timer expired
+  ACTION: Rolling back to Frame 2
+  RETRANSMITTING: 2
+  Receiver: Frame 2 accepted ok (Retransmission)
+  Sender ACK: ACK 3 sent to sender
+
+[WINDOW] Current active frames: 3 4
+  Sender: Frame 3 sent
+  Receiver: Frame 3 accepted ok
+  Sender ACK: ACK 4 sent to sender
+  Sender: Frame 4 sent
+  Receiver: Frame 4 accepted ok
+  Sender ACK: ACK 5 sent to sender
+
+SUCCESS: All transmissions completed safely.
+
+SLIDING WINDOW SIMULATOR TOOLKIT
+1. Go-Back-N Protocol
+2. Selective Repeat Protocol
+3. Exit Program
+
+Enter choice (1, 2, or 3): 2
+Enter total frames to transfer: 5
+Enter sender window size (W): 3
+Enter lost frame number (-1 for no loss): 2
+
+*** SELECTIVE REPEAT SIMULATION ***
+
+[WINDOW] Current active frames: 0 1 2
+  Sender: Frame 0 sent
+  Receiver: Frame 0 accepted ok
+  Sender ACK: ACK 1 sent to sender
+  Sender: Frame 1 sent
+  Receiver: Frame 1 accepted ok
+  Sender ACK: ACK 2 sent to sender
+  Sender: Frame 2 sent
+  Receiver ALERT: Frame 2 dropped or corrupted
+  Receiver ALERT: NAK 3 sent to sender
+
+  TIMEOUT: Timer expired specifically for Frame 2
+  ACTION: Targeted retransmission of Frame 2 only
+  Receiver: Frame 2 accepted ok (Repaired)
+  Sender ACK: ACK 3 sent to sender
+
+[WINDOW] Current active frames: 3 4
+  Sender: Frame 3 sent
+  Receiver: Frame 3 accepted ok
+  Sender ACK: ACK 4 sent to sender
+  Sender: Frame 4 sent
+  Receiver: Frame 4 accepted ok
+  Sender ACK: ACK 5 sent to sender
+
+SUCCESS: All transmissions completed safely.
+
+SLIDING WINDOW SIMULATOR TOOLKIT
+1. Go-Back-N Protocol
+2. Selective Repeat Protocol
+3. Exit Program
+
+Enter choice (1, 2, or 3): 3
+
+Exiting program. Goodbye.
