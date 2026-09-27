@@ -1,0 +1,255 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+#define BUFFER_SIZE 1024
+
+int main()
+{
+    int sock;
+    struct sockaddr_in server_addr;
+    char buffer[BUFFER_SIZE];
+
+    /* Create socket */
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (sock < 0)
+    {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    /* Server address */
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr =
+        inet_addr("127.0.0.1");
+
+    /* Connect */
+    if (connect(sock,
+                (struct sockaddr *)&server_addr,
+                sizeof(server_addr)) < 0)
+    {
+        perror("Connection failed");
+        close(sock);
+        exit(1);
+    }
+
+    printf("====================================\n");
+    printf("       CONNECTED TO SERVER\n");
+    printf("====================================\n");
+
+    /* ================= LOGIN ================= */
+
+    char username[50];
+    char password[50];
+
+    printf("\nEnter username: ");
+    scanf("%49s", username);
+
+    printf("Enter password: ");
+    scanf("%49s", password);
+
+    send(sock, username,
+         strlen(username) + 1, 0);
+
+    send(sock, password,
+         strlen(password) + 1, 0);
+
+    recv(sock, buffer,
+         sizeof(buffer), 0);
+
+    if (strcmp(buffer, "LOGIN_SUCCESS") != 0)
+    {
+        printf("\nAuthentication failed!\n");
+        close(sock);
+        return 0;
+    }
+
+    printf("\nAuthentication successful!\n");
+
+    /* ================= MENU ================= */
+
+    while (1)
+    {
+        int choice;
+
+        printf("\n========== MENU ==========\n");
+        printf("1. Upload File\n");
+        printf("2. Download File\n");
+        printf("3. Server Date and Time\n");
+        printf("4. Server Information\n");
+        printf("5. Logout\n");
+        printf("==========================\n");
+
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        send(sock, &choice,
+             sizeof(choice), 0);
+
+        /* ---------- Upload ---------- */
+
+        if (choice == 1)
+        {
+            FILE *fp;
+            char filename[100];
+            long file_size;
+            long sent = 0;
+            int bytes;
+
+            printf("Enter file name to upload: ");
+            scanf("%99s", filename);
+
+            fp = fopen(filename, "rb");
+
+            if (fp == NULL)
+            {
+                printf("File not found.\n");
+                continue;
+            }
+
+            send(sock, filename,
+                 strlen(filename) + 1, 0);
+
+            recv(sock, buffer,
+                 sizeof(buffer), 0);
+
+            if (strcmp(buffer, "READY") != 0)
+            {
+                fclose(fp);
+                printf("Server not ready.\n");
+                continue;
+            }
+
+            fseek(fp, 0, SEEK_END);
+            file_size = ftell(fp);
+            rewind(fp);
+
+            send(sock, &file_size,
+                 sizeof(file_size), 0);
+
+            while (sent < file_size)
+            {
+                bytes = fread(buffer, 1,
+                              BUFFER_SIZE, fp);
+
+                if (bytes <= 0)
+                    break;
+
+                send(sock, buffer, bytes, 0);
+
+                sent += bytes;
+            }
+
+            fclose(fp);
+
+            recv(sock, buffer,
+                 sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        /* ---------- Download ---------- */
+
+        else if (choice == 2)
+        {
+            FILE *fp;
+            char filename[100];
+            long file_size;
+            long received = 0;
+            int bytes;
+
+            printf("Enter file name to download: ");
+            scanf("%99s", filename);
+
+            send(sock, filename,
+                 strlen(filename) + 1, 0);
+
+            recv(sock, buffer,
+                 sizeof(buffer), 0);
+
+            if (strcmp(buffer, "FILE_NOT_FOUND") == 0)
+            {
+                printf("File not found on server.\n");
+                continue;
+            }
+
+            recv(sock, &file_size,
+                 sizeof(file_size), 0);
+
+            fp = fopen(filename, "wb");
+
+            if (fp == NULL)
+            {
+                printf("Cannot create file.\n");
+                continue;
+            }
+
+            while (received < file_size)
+            {
+                bytes = recv(sock, buffer,
+                             BUFFER_SIZE, 0);
+
+                if (bytes <= 0)
+                    break;
+
+                fwrite(buffer, 1, bytes, fp);
+
+                received += bytes;
+            }
+
+            fclose(fp);
+
+            printf("File downloaded successfully.\n");
+        }
+
+        /* ---------- Date and Time ---------- */
+
+        else if (choice == 3)
+        {
+            recv(sock, buffer,
+                 sizeof(buffer), 0);
+
+            printf("\nServer Date and Time:\n%s",
+                   buffer);
+        }
+
+        /* ---------- Server Information ---------- */
+
+        else if (choice == 4)
+        {
+            recv(sock, buffer,
+                 sizeof(buffer), 0);
+
+            printf("\nServer Information:\n");
+            printf("%s\n", buffer);
+        }
+
+        /* ---------- Logout ---------- */
+
+        else if (choice == 5)
+        {
+            recv(sock, buffer,
+                 sizeof(buffer), 0);
+
+            printf("\nLogged out successfully.\n");
+            break;
+        }
+
+        else
+        {
+            recv(sock, buffer,
+                 sizeof(buffer), 0);
+
+            printf("Invalid option.\n");
+        }
+    }
+
+    close(sock);
+
+    return 0;
+}
