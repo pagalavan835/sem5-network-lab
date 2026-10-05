@@ -1,0 +1,459 @@
+[24bcs055@mepcolinux exp6]$cat server.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <stdint.h>
+#include <signal.h>
+
+#define PORT 9 055
+#define BUFFER_SIZE 1024
+
+// Hardcoded sample credentials
+#define VALID_USER "admin"
+#define VALID_PASS "password123"
+
+static int server_fd = -1;
+static int client_fd = -1;
+
+void handle_sigint(int sig) {
+    (void)sig;
+    printf("\n\nCaught SIGINT. Shutting down...\n");
+    if (client_fd >= 0) close(client_fd);
+    if (server_fd >= 0) close(server_fd);
+    printf("Server closed.\n");
+    exit(0);
+}
+
+/* ---- reliable I/O helpers ---- */
+static int recv_all(int fd, void *buf, size_t len) {
+    size_t got = 0;
+    while (got < len) {
+        ssize_t n = recv(fd, (char *)buf + got, len - got, 0);
+        if (n <= 0) return -1;
+        got += (size_t)n;
+    }
+    return 0;
+}
+
+static int send_all(int fd, const void *buf, size_t len) {
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t n = send(fd, (const char *)buf + sent, len - sent, 0);
+        if (n <= 0) return -1;
+        sent += (size_t)n;
+    }
+    return 0;
+}
+
+static int send_msg(int fd, const char *msg) {
+    uint32_t len = (uint32_t)strlen(msg);
+    uint32_t nlen = htonl(len);
+    if (send_all(fd, &nlen, sizeof(nlen)) < 0) return -1;
+    return send_all(fd, msg, len);
+}
+
+static int recv_msg(int fd, char *buf, size_t max) {
+    uint32_t nlen;
+    if (recv_all(fd, &nlen, sizeof(nlen)) < 0) return -1;
+    uint32_t len = ntohl(nlen);
+    if (len >= max) return -1;
+    if (len > 0 && recv_all(fd, buf, len) < 0) return -1;
+    buf[len] = '\0';
+    return (int)len;
+}
+
+int main(void) {
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_len;
+    char buffer[BUFFER_SIZE];
+    int opt = 1;
+
+    signal(SIGINT, handle_sigint);
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT);
+
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Bind failed");
+        close(server_fd);
+        exit(1);
+    }
+
+    if (listen(server_fd, 5) < 0) {
+        perror("Listen failed");
+        close(server_fd);
+        exit(1);
+    }
+
+    printf("====================================\n");
+    printf("         TCP SERVER STARTED         \n");
+    printf("====================================\n");
+    printf("Waiting for client on port %d...\n", PORT);
+
+    client_len = sizeof(client_addr);
+    client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+    if (client_fd < 0) {
+        perror("Accept failed");
+        close(server_fd);
+        exit(1);
+    }
+
+    printf("\nClient connected!\n");
+    printf("Client IP   : %s\n", inet_ntoa(client_addr.sin_addr));
+    printf("Client Port : %d\n", ntohs(client_addr.sin_port));
+
+    /* ================= AUTHENTICATION PHASE ================= */
+    char client_user[100];
+    char client_pass[100];
+
+    printf("Verifying client credentials...\n");
+    if (recv_msg(client_fd, client_user, sizeof(client_user)) < 0 ||
+        recv_msg(client_fd, client_pass, sizeof(client_pass)) < 0) {
+        printf("Failed to receive authentication details. Closing link.\n");
+        close(client_fd);
+        close(server_fd);
+        return 0;
+    }
+
+    // Verify credentials
+    if (strcmp(client_user, VALID_USER) == 0 && strcmp(client_pass, VALID_PASS) == 0) {
+        send_msg(client_fd, "AUTH_SUCCESS");
+        printf("Authentication Successful for user: %s\n", client_user);
+    } else {
+        send_msg(client_fd, "INVALID_CREDENTIALS");
+        printf("Authentication Failed for user attempted: %s\n", client_user);
+        close(client_fd);
+        close(server_fd);
+        return 0;
+    }
+
+    /* ================= SERVICE LOOP ================= */
+    while (1) {
+        int32_t nchoice;
+        if (recv_all(client_fd, &nchoice, sizeof(nchoice)) < 0) {
+            printf("Client disconnected.\n");
+            break;
+        }
+        int choice = (int)ntohl((uint32_t)nchoice);
+
+        /* ---------- 1. Echo ---------- */
+        if (choice == 1) {
+            char message[200];
+            if (recv_msg(client_fd, message, sizeof(message)) < 0) break;
+            printf("Echo request   : %s\n", message);
+            send_msg(client_fd, message);
+            printf("Echo reply sent.\n");
+        }
+        /* ---------- 2. Palindrome Check ---------- */
+        else if (choice == 2) {
+            char str[200];
+            int i, len, is_palindrome = 1;
+            if (recv_msg(client_fd, str, sizeof(str)) < 0) break;
+            printf("Palindrome check for : %s\n", str);
+
+            len = strlen(str);
+            for (i = 0; i < len / 2; i++) {
+                if (tolower((unsigned char)str[i]) != tolower((unsigned char)str[len - 1 - i])) {
+                    is_palindrome = 0;
+                    break;
+                }
+            }
+            if (is_palindrome)
+                snprintf(buffer, sizeof(buffer), "\"%s\" is a PALINDROME", str);
+            else
+                snprintf(buffer, sizeof(buffer), "\"%s\" is NOT a PALINDROME", str);
+
+            send_msg(client_fd, buffer);
+            printf("Palindrome result sent.\n");
+        }
+        /* ---------- 3. Exit ---------- */
+        else if (choice == 3) {
+            send_msg(client_fd, "GOODBYE");
+            printf("Client exited cleanly.\n");
+            break;
+        }
+        /* ---------- Handle unexpected input numbers ---------- */
+        else {
+            send_msg(client_fd, "INVALID_OPTION");
+            printf("Invalid choice index received: %d\n", choice);
+        }
+    }
+
+    close(client_fd);
+    close(server_fd);
+    printf("\nServer closed down normally.\n");
+    return 0;
+}
+
+[24bcs055@mepcolinux exp6]$cat client.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <stdint.h>
+#include <termios.h>
+
+#define PORT 9 055
+#define BUFFER_SIZE 1024
+
+/* Function to read password invisibly */
+void get_invisible_password(char *password, size_t max_len) {
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    if (fgets(password, max_len, stdin) != NULL) {
+        size_t len = strlen(password);
+        if (len > 0 && password[len - 1] == '\n') {
+            password[len - 1] = '\0';
+        }
+    }
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    printf("\n");
+}
+
+/* ---- reliable I/O helpers ---- */
+static int recv_all(int fd, void *buf, size_t len) {
+    size_t got = 0;
+    while (got < len) {
+        ssize_t n = recv(fd, (char *)buf + got, len - got, 0);
+        if (n <= 0) return -1;
+        got += (size_t)n;
+    }
+    return 0;
+}
+
+static int send_all(int fd, const void *buf, size_t len) {
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t n = send(fd, (const char *)buf + sent, len - sent, 0);
+        if (n <= 0) return -1;
+        sent += (size_t)n;
+    }
+    return 0;
+}
+
+static int send_msg(int fd, const char *msg) {
+    uint32_t len = (uint32_t)strlen(msg);
+    uint32_t nlen = htonl(len);
+    if (send_all(fd, &nlen, sizeof(nlen)) < 0) return -1;
+    return send_all(fd, msg, len);
+}
+
+static int recv_msg(int fd, char *buf, size_t max) {
+    uint32_t nlen;
+    if (recv_all(fd, &nlen, sizeof(nlen)) < 0) return -1;
+    uint32_t len = ntohl(nlen);
+    if (len >= max) return -1;
+    if (len > 0 && recv_all(fd, buf, len) < 0) return -1;
+    buf[len] = '\0';
+    return (int)len;
+}
+
+int main(void) {
+    int sock;
+    struct sockaddr_in server_addr;
+    char buffer[BUFFER_SIZE];
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection failed");
+        close(sock);
+        exit(1);
+    }
+
+    printf("====================================\n");
+    printf("        CONNECTED TO SERVER         \n");
+    printf("====================================\n");
+
+    /* ================= AUTHENTICATION PHASE ================= */
+    char username[100];
+    char password[100];
+
+    printf("\n--- Authentication Required ---\n");
+    printf("Enter Username: ");
+    scanf(" %99s", username);
+
+    // Clear newline left in buffer by scanf
+    while (getchar() != '\n');
+
+    printf("Enter Password: ");
+    get_invisible_password(password, sizeof(password));
+
+    // Send credentials to server
+    if (send_msg(sock, username) < 0 || send_msg(sock, password) < 0) {
+        printf("Failed to send credentials.\n");
+        close(sock);
+        exit(1);
+    }
+
+    // Receive authentication status result
+    if (recv_msg(sock, buffer, sizeof(buffer)) < 0) {
+        printf("Failed to get authentication response from server.\n");
+        close(sock);
+        exit(1);
+    }
+
+    if (strcmp(buffer, "AUTH_SUCCESS") != 0) {
+        printf("Authentication failed: %s\n", buffer);
+        close(sock);
+        exit(1);
+    }
+    printf("Authentication successful!\n");
+
+    /* ================= MENU ================= */
+    while (1) {
+        int choice;
+        printf("\n========== MENU ==========\n");
+        printf("1. Echo\n");
+        printf("2. Palindrome Check\n");
+        printf("3. Exit\n");
+        printf("==========================\n");
+        printf("Enter your choice: ");
+
+        if (scanf("%d", &choice) != 1) {
+            printf("Invalid input type.\n");
+            while (getchar() != '\n');
+            continue;
+        }
+
+        uint32_t nchoice = htonl((uint32_t)choice);
+        if (send_all(sock, &nchoice, sizeof(nchoice)) < 0) {
+            printf("Failed to send choice to server.\n");
+            break;
+        }
+
+        /* ---------- Echo ---------- */
+        if (choice == 1) {
+            char message[200];
+            printf("Enter message to echo: ");
+            scanf(" %199[^\n]", message);
+            send_msg(sock, message);
+            if (recv_msg(sock, buffer, sizeof(buffer)) >= 0)
+                printf("\nServer echoed : %s\n", buffer);
+        }
+        /* ---------- Palindrome Check ---------- */
+        else if (choice == 2) {
+            char str[200];
+            printf("Enter string to check: ");
+            scanf(" %199[^\n]", str);
+            send_msg(sock, str);
+            if (recv_msg(sock, buffer, sizeof(buffer)) >= 0)
+                printf("\nServer result : %s\n", buffer);
+        }
+        /* ---------- Exit ---------- */
+        else if (choice == 3) {
+            if (recv_msg(sock, buffer, sizeof(buffer)) >= 0) {
+                printf("\nServer response: %s\n", buffer);
+            }
+            printf("Disconnected from server.\n");
+            break;
+        }
+        /* ---------- Invalid Options ---------- */
+        else {
+            if (recv_msg(sock, buffer, sizeof(buffer)) >= 0) {
+                printf("Server response: %s\n", buffer);
+            }
+        }
+    }
+
+    close(sock);
+    return 0;
+}
+
+
+[24bcs055@mepcolinux exp6]$./server
+====================================
+         TCP SERVER STARTED
+====================================
+Waiting for client on port 9 055...
+
+Client connected!
+Client IP   : 127.0.0.1
+Client Port : 37390
+Verifying client credentials...
+Authentication Successful for user: admin
+Echo request   : hello hi
+Echo reply sent.
+Palindrome check for : malayalam
+Palindrome result sent.
+Palindrome check for : tamil
+Palindrome result sent.
+Client exited cleanly.
+
+Server closed down normally.
+
+[24bcs055@mepcolinux exp6]$./client
+====================================
+        CONNECTED TO SERVER
+====================================
+
+--- Authentication Required ---
+Enter Username: admin
+Enter Password:
+Authentication successful!
+
+========== MENU ==========
+1. Echo
+2. Palindrome Check
+3. Exit
+==========================
+Enter your choice: 1
+Enter message to echo: hello hi
+
+Server echoed : hello hi
+
+========== MENU ==========
+1. Echo
+2. Palindrome Check
+3. Exit
+==========================
+Enter your choice: 2
+Enter string to check: malayalam
+
+Server result : "malayalam" is a PALINDROME
+
+========== MENU ==========
+1. Echo
+2. Palindrome Check
+3. Exit
+==========================
+Enter your choice: 2
+Enter string to check: tamil
+
+Server result : "tamil" is NOT a PALINDROME
+
+========== MENU ==========
+1. Echo
+2. Palindrome Check
+3. Exit
+==========================
+Enter your choice: 3
+
+Server response: GOODBYE
+Disconnected from server.
