@@ -1,0 +1,71 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+#define BUFFER_SIZE 1024
+
+int main() {
+    int client_fd;
+    struct sockaddr_in server_addr;
+    char buffer[BUFFER_SIZE];
+    char message[BUFFER_SIZE];
+    socklen_t addr_len = sizeof(server_addr);
+
+    // 1. Create UDP socket
+    if ((client_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // 2. Populate server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // Localhost loopback
+
+    printf("=========================================\n");
+    printf("         UDP CLIENT READY                \n");
+    printf("=========================================\n");
+    printf("Type your messages below. Type 'exit' to quit.\n\n");
+
+    // 3. Interactive communication loop
+    while (1) {
+        printf("Client Message: ");
+        if (fgets(message, BUFFER_SIZE, stdin) == NULL) {
+            break;
+        }
+
+        // Remove trailing newline character
+        message[strcspn(message, "\n")] = 0;
+
+        // Exit condition
+        if (strcmp(message, "exit") == 0) {
+            printf("Closing client session...\n");
+            break;
+        }
+
+        if (strlen(message) == 0) {
+            continue;
+        }
+
+        // Send packet to the server
+        sendto(client_fd, (const char *)message, strlen(message), 0,
+               (const struct sockaddr *)&server_addr, sizeof(server_addr));
+
+        // Wait for response/acknowledgment from server
+        memset(buffer, 0, BUFFER_SIZE);
+        int n = recvfrom(client_fd, (char *)buffer, BUFFER_SIZE - 1, 0,
+                         (struct sockaddr *)&server_addr, &addr_len);
+        if (n > 0) {
+            buffer[n] = '\0';
+            printf("Server Response -> %s\n\n", buffer);
+        }
+    }
+
+    // 4. Close the socket
+    close(client_fd);
+    return 0;
+}
